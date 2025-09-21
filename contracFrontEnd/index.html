@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Contract Analyzer</title>
+    <!-- Tailwind CSS for styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome for icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- PDF.js library for reading PDFs -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.min.js"></script>
+    <script>
+        // Required setup for PDF.js
+        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.11.338/pdf.worker.min.js`;
+    </script>
+    <style>
+        /* A simple class for the loading spinner animation */
+        .spinner {
+            border-color: transparent;
+            border-top-color: #ef4444; /* Bright Red */
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        /* A class to highlight the drag-and-drop area */
+        .drag-over {
+            border-color: #ef4444; /* Bright Red */
+            background-color: #374151; /* Darker Grey */
+        }
+    </style>
+</head>
+<body class="bg-slate-100 flex items-center justify-center min-h-screen p-4">
+
+    <main class="bg-slate-800 text-slate-300 p-8 rounded-2xl shadow-2xl max-w-3xl w-full space-y-8">
+        
+        <!-- Header Section -->
+        <div class="text-center">
+            <h1 class="text-4xl font-bold text-white">Contracto.AI</h1>
+            <p class="text-slate-400 mt-2">Understand your contracts better.</p>
+        </div>
+
+        <!-- Input Section -->
+        <div class="space-y-6">
+            <!-- Textarea for copy-pasting -->
+            <textarea id="contractTextArea" rows="10" class="w-full p-4 bg-slate-900 border-2 border-slate-700 rounded-xl focus:ring-2 focus:ring-red-600 focus:outline-none transition placeholder:text-slate-500" placeholder="Paste your contract text here..."></textarea>
+            
+            <div class="flex items-center justify-center space-x-4">
+                <hr class="w-full border-slate-700">
+                <span class="text-slate-500 font-semibold text-sm">OR</span>
+                <hr class="w-full border-slate-700">
+            </div>
+
+            <!-- Drag & Drop / Upload Area -->
+            <div id="uploadArea" class="border-2 border-dashed border-slate-700 rounded-xl p-6 text-center cursor-pointer hover:border-red-600 transition">
+                <input type="file" id="pdfUpload" class="hidden" accept=".pdf">
+                <label for="pdfUpload" class="cursor-pointer">
+                    <i class="fas fa-file-pdf text-4xl text-red-600"></i>
+                    <p class="mt-2 text-slate-300 font-semibold">Drag & Drop or Click to Upload PDF</p>
+                    <p id="fileInfo" class="text-sm text-slate-500 mt-1">No file selected</p>
+                </label>
+            </div>
+        </div>
+
+        <!-- Analyze Button -->
+        <button id="analyzeButton" class="w-full bg-red-600 text-white font-bold py-3 px-6 rounded-full hover:bg-red-700 transition-transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-red-500 focus:ring-offset-slate-800 disabled:bg-slate-600 disabled:cursor-not-allowed disabled:scale-100" disabled>
+            <i class="fas fa-search mr-2"></i>Analyze Contract
+        </button>
+
+        <!-- Loading Spinner -->
+        <div id="loadingSpinner" class="text-center py-8 hidden">
+            <div class="spinner w-12 h-12 rounded-full border-4 mx-auto"></div>
+            <p class="mt-4 text-slate-400 font-semibold">Analyzing your document...</p>
+        </div>
+
+        <!-- Error Section -->
+        <div id="errorSection" class="hidden bg-red-900/50 border border-red-700 text-red-300 p-4 rounded-lg">
+            <p class="font-bold">An Error Occurred</p>
+            <p id="errorMessage">Could not analyze the document.</p>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="hidden space-y-8 pt-4">
+            <div class="text-center border-t border-slate-700 pt-8">
+                <h2 class="text-3xl font-bold text-white">Analysis Report</h2>
+            </div>
+            
+            <!-- Overall Risk & Summary -->
+            <div>
+                 <h3 class="text-xl font-bold text-white mb-3">Overall Assessment</h3>
+                 <div id="overallSummary" class="p-4 bg-slate-900 rounded-xl border border-slate-700">
+                    <!-- JS will populate this -->
+                 </div>
+            </div>
+
+            <!-- Detailed Findings -->
+            <div>
+                <h3 class="text-xl font-bold text-white mb-3">Detailed Findings</h3>
+                <div id="detailedFindings" class="space-y-4">
+                    <!-- JS will populate this -->
+                </div>
+            </div>
+            
+            <!-- Helpful Schemes Section -->
+            <div id="schemesContainer" class="hidden">
+                <h3 class="text-xl font-bold text-white mb-3">Helpful Government Schemes</h3>
+                <div id="schemesList" class="space-y-4">
+                    <!-- JS will populate this -->
+                </div>
+            </div>
+        </div>
+    </main>
+
+<script>
+document.addEventListener('DOMContentLoaded', () => {
+    // --- Get all the elements we need from the page ---
+    const contractTextArea = document.getElementById('contractTextArea');
+    const pdfUpload = document.getElementById('pdfUpload');
+    const uploadArea = document.getElementById('uploadArea');
+    const fileInfo = document.getElementById('fileInfo');
+    const analyzeButton = document.getElementById('analyzeButton');
+    
+    const loadingSpinner = document.getElementById('loadingSpinner');
+    const errorSection = document.getElementById('errorSection');
+    const errorMessage = document.getElementById('errorMessage');
+    const resultsSection = document.getElementById('resultsSection');
+
+    const overallSummary = document.getElementById('overallSummary');
+    const detailedFindings = document.getElementById('detailedFindings');
+    const schemesContainer = document.getElementById('schemesContainer');
+    const schemesList = document.getElementById('schemesList');
+
+    let fullContractText = '';
+
+    // --- Core Functions ---
+
+    // Function to switch between views (input, loading, results, error)
+    const showView = (viewName) => {
+        loadingSpinner.classList.add('hidden');
+        resultsSection.classList.add('hidden');
+        errorSection.classList.add('hidden');
+        if (viewName === 'loading') loadingSpinner.classList.remove('hidden');
+        if (viewName === 'results') resultsSection.classList.remove('hidden');
+        if (viewName === 'error') errorSection.classList.remove('hidden');
+    };
+
+    // Function to enable/disable the analyze button
+    const updateButtonState = () => {
+        analyzeButton.disabled = fullContractText.trim().length === 0;
+    };
+
+    // Function to handle PDF file selection and text extraction
+    const handlePdfFile = async (file) => {
+        if (!file) return;
+        fileInfo.textContent = `Reading: ${file.name}...`;
+        analyzeButton.disabled = true;
+        const reader = new FileReader();
+        reader.onload = async (e) => {
+            try {
+                const typedarray = new Uint8Array(e.target.result);
+                const pdf = await pdfjsLib.getDocument(typedarray).promise;
+                let textContent = '';
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const text = await page.getTextContent();
+                    textContent += text.items.map(item => item.str).join(' ') + '\n';
+                }
+                contractTextArea.value = textContent;
+                fullContractText = textContent;
+                fileInfo.textContent = `Successfully read: ${file.name}`;
+                updateButtonState();
+            } catch (error) {
+                console.error("PDF Parsing Error:", error);
+                fileInfo.textContent = 'Could not read this PDF.';
+                showView('error');
+                errorMessage.textContent = 'The selected PDF file could not be read or is corrupted.';
+            }
+        };
+        reader.readAsArrayBuffer(file);
+    };
+
+    // --- Event Listeners for User Interaction ---
+
+    // Update text when user types in the textarea
+    contractTextArea.addEventListener('input', () => {
+        fullContractText = contractTextArea.value;
+        updateButtonState();
+    });
+
+    // Handle PDF drop area
+    uploadArea.addEventListener('click', () => pdfUpload.click());
+    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('drag-over'); });
+    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('drag-over'));
+    uploadArea.addEventListener('drop', (e) => {
+        e.preventDefault();
+        uploadArea.classList.remove('drag-over');
+        if (e.dataTransfer.files.length > 0 && e.dataTransfer.files[0].type === 'application/pdf') {
+            pdfUpload.files = e.dataTransfer.files;
+            handlePdfFile(e.dataTransfer.files[0]);
+        }
+    });
+
+    // Handle PDF selection via click
+    pdfUpload.addEventListener('change', () => {
+        if (pdfUpload.files.length > 0) {
+            handlePdfFile(pdfUpload.files[0]);
+        }
+    });
+
+    // --- Main Analysis Logic ---
+    analyzeButton.addEventListener('click', async () => {
+        showView('loading');
+        resultsSection.classList.add('hidden'); // Ensure results are hidden before new analysis
+
+        try {
+            // Send the text to your backend server
+            const response = await fetch('http://localhost:5000/analyze', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ document_text: fullContractText })
+            });
+
+            if (!response.ok) {
+                const errData = await response.json().catch(() => ({ error: `Server responded with status ${response.status}` }));
+                throw new Error(errData.error);
+            }
+
+            const result = await response.json();
+            displayResults(result);
+
+        } catch (error) {
+            console.error("Fetch Error:", error);
+            showView('error');
+            errorMessage.textContent = error.message || 'A network error occurred. Please check if your backend server is running.';
+        }
+    });
+
+    // --- Function to Display Results on the Page ---
+    const displayResults = (data) => {
+        // Clear previous results
+        overallSummary.innerHTML = '';
+        detailedFindings.innerHTML = '';
+        schemesList.innerHTML = '';
+
+        // --- Create and display Overall Summary ---
+        const riskColor = {
+            'High': 'text-red-500',
+            'Medium': 'text-yellow-400',
+            'Low': 'text-green-400',
+            'None': 'text-green-400'
+        }[data.overallRisk] || 'text-slate-300';
+
+        const summaryElement = document.createElement('div');
+        summaryElement.innerHTML = `
+            <p class="text-lg font-bold ${riskColor}">Overall Risk: ${data.overallRisk}</p>
+            <p class="text-slate-400 mt-2">${data.summary}</p>
+        `;
+        overallSummary.appendChild(summaryElement);
+
+        // --- Create and display Detailed Findings ---
+        if (data.risks && data.risks.length > 0) {
+            data.risks.forEach(risk => {
+                // Make sure severity exists and is a string before calling toLowerCase()
+                const severityKey = (risk.severity || 'low').toLowerCase();
+
+                let severityInfo = {
+                    high:   { icon: 'fa-shield-halved',   color: 'red-600',   bgColor: 'bg-red-900/50',    borderColor: 'border-red-700' },
+                    medium: { icon: 'fa-exclamation-triangle', color: 'yellow-400', bgColor: 'bg-yellow-900/50', borderColor: 'border-yellow-700' },
+                    low:    { icon: 'fa-check-circle',    color: 'green-400',  bgColor: 'bg-green-900/50',  borderColor: 'border-green-700' }
+                }[severityKey];
+
+                // ****** THIS IS THE FINAL BUG FIX ******
+                // If the severityKey from the AI is unexpected, we provide a default, neutral style
+                // This prevents the application from crashing.
+                if (!severityInfo) {
+                    severityInfo = { icon: 'fa-question-circle', color: 'slate-400', bgColor: 'bg-slate-700/50', borderColor: 'border-slate-600'};
+                }
+                // *************************************
+
+                const riskElement = document.createElement('div');
+                riskElement.className = `p-4 rounded-lg border ${severityInfo.borderColor} ${severityInfo.bgColor}`;
+                riskElement.innerHTML = `
+                    <p class="font-bold text-${severityInfo.color} flex items-center">
+                        <i class="fas ${severityInfo.icon} mr-3 fa-fw"></i>${risk.category} (Score: ${risk.score})
+                    </p>
+                    <p class="text-slate-400 mt-1 pl-8">${risk.description}</p>
+                `;
+                detailedFindings.appendChild(riskElement);
+            });
+        } else {
+            detailedFindings.innerHTML = `<p class="text-slate-400 text-center py-4">No specific risks were identified. Looks good!</p>`;
+        }
+
+        // --- Create and display Helpful Schemes ---
+        if (data.helpfulSchemes && data.helpfulSchemes.length > 0) {
+            schemesContainer.classList.remove('hidden');
+            data.helpfulSchemes.forEach(scheme => {
+                const schemeElement = document.createElement('a');
+                schemeElement.href = scheme.link;
+                schemeElement.target = '_blank';
+                schemeElement.rel = 'noopener noreferrer';
+                schemeElement.className = 'block p-4 rounded-lg border border-slate-700 hover:bg-slate-700/50 hover:border-red-600 transition';
+                schemeElement.innerHTML = `
+                    <p class="font-bold text-white flex items-center">
+                        ${scheme.name}
+                        <i class="fas fa-external-link-alt text-xs ml-2"></i>
+                    </p>
+                    <p class="text-slate-400 mt-1">${scheme.description}</p>
+                `;
+                schemesList.appendChild(schemeElement);
+            });
+        } else {
+            schemesContainer.classList.add('hidden');
+        }
+
+        // Finally, show the entire results section
+        showView('results');
+    };
+});
+</script>
+
+</body>
+</html>
+
