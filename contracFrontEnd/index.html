@@ -214,8 +214,8 @@ document.addEventListener('DOMContentLoaded', () => {
         resultsSection.classList.add('hidden'); 
 
         try {
-            
-            const response = await fetch('http://localhost:5000/analyze', {
+            // might have to change to localhost 5000 based on system
+            const response = await fetch('http://localhost:5001/analyze', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ document_text: fullContractText })
